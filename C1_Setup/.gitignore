@@ -1,0 +1,6 @@
+venv/
+results/
+logs/
+csv-results/
+*.h5
+*.csv
