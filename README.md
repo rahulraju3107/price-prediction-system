@@ -16,10 +16,10 @@ Follow these steps to run the project:
 
 1. **Install Dependencies**:
    ```bash
-   pip install numpy matplotlib pandas scikit-learn tensorflow yfinance
+   pip install numpy matplotlib pandas scikit-learn tensorflow yfinance mplfinance pickle
    ```
 
-2. **Run the Program**:
+2. **Training the model**:
    - Train the model:
      ```bash
      python train.py
@@ -28,8 +28,14 @@ Follow these steps to run the project:
      ```bash
      python test.py
      ```
+3. **Run Program**:
+     ```bash
+     python stock_prediction.py 
+     ```
 
-3. **Check Outputs**:
+5. **Check Outputs**:
    - Model weights are saved in the `results/` directory.
    - Prediction data is saved in the `csv-results/` directory.
    - A plot comparing actual vs. predicted prices is displayed.
+   - A Candlestick Chart
+   - A Boxplot Chart
