@@ -8,6 +8,7 @@ This project is developed for COS30018 Intelligent Systems at Swinburne Universi
 
 - [C1_Setup](./C1_Setup)
 - [C2_DataProcessing1](./C2_DataProcessing1)
+- [C3_DataProcessing2](./C3_DataProcessing2)
 
 ## Setup and Running
 
