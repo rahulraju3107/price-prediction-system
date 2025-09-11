@@ -2,13 +2,19 @@
 
 ## Overview
 
-This project is developed for COS30018 Intelligent Systems at Swinburne University and uses an LSTM neural network to predict stock prices. It fetches data via yfinance, trains a model with train.py, and evaluates predictions with test.py. Outputs include performance metrics and plots of actual vs. predicted prices. See the C1_Setup directory for the detailed setup report.
+This project is developed for **COS30018 Intelligent Systems** at Swinburne University. It predicts stock prices using different recurrent neural network (RNN) architectures such as LSTM, GRU, and SimpleRNN.
+
+Key features include:
+- A configurable model builder (create_model()) that supports multiple architectures, variable layers/units, dropout, bidirectionality, and custom optimizers/ loss functions.
+- Controlled experiments comparing LSTM, GRU, SimpleRNN, and Bidirectional LSTM models.
+- Evaluation of training performance, prediction accuracy, and trade-offs between speed and complexity.
 
 ## Links
 
 - [C1_Setup](./C1_Setup)
 - [C2_DataProcessing1](./C2_DataProcessing1)
 - [C3_DataProcessing2](./C3_DataProcessing2)
+- [C4_MachineLearning1](./C4_MachineLearning1)
 
 ## Setup and Running
 
@@ -33,9 +39,9 @@ Follow these steps to run the project:
      python stock_prediction.py 
      ```
 
-5. **Check Outputs**:
+5. **Outputs**:
    - Model weights are saved in the `results/` directory.
    - Prediction data is saved in the `csv-results/` directory.
-   - A plot comparing actual vs. predicted prices is displayed.
-   - A Candlestick Chart
-   - A Boxplot Chart
+   - Plot comparing actual vs. predicted prices is displayed.
+   - Candlestick Chart
+   - Boxplot Chart
