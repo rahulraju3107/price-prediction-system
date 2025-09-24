@@ -1,22 +1,3 @@
-# File: stock_prediction.py
-# Authors: Bao Vo and Cheong Koo
-# Date: 14/07/2021(v1); 19/07/2021 (v2); 02/07/2024 (v3); 09/07/2024 (v4)
-
-# Code modified from:
-# Title: Predicting Stock Prices with Python
-# Youtuble link: https://www.youtube.com/watch?v=PuZY9q-aKLw
-# By: NeuralNine
-
-# Need to install the following (best in a virtual env):
-# pip install numpy
-# pip install matplotlib
-# pip install pandas
-# pip install tensorflow
-# pip install scikit-learn
-# pip install pandas-datareader
-# pip install yfinance
-# pip install mplfinance # Required for candlestick charts
-
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -149,7 +130,7 @@ def load_process_data(company, start_date, end_date, features=['Open', 'High', '
 # Function to create configurable deep learning models
 #------------------------------------------------------------------------------
 def create_model(sequence_length, n_features, units=50, cell=LSTM, n_layers=2, dropout=0.2,
-                loss="mean_squared_error", optimizer="adam", bidirectional=False):
+                loss="mean_squared_error", optimizer="adam", bidirectional=False, steps_ahead=1):
     """
     Create a configurable deep learning model for time series prediction.
     
@@ -168,12 +149,10 @@ def create_model(sequence_length, n_features, units=50, cell=LSTM, n_layers=2, d
     loss (str): Loss function for model compilation
     optimizer (str): Optimizer for model compilation
     bidirectional (bool): Whether to wrap layers in Bidirectional wrapper
+    steps_ahead (int): Number of steps to predict (1 for single step, >1 for multistep)
     
     Returns:
     model: Compiled Keras Sequential model
-    
-    Example usage:
-    model = create_model(60, 1, units=50, cell=LSTM, n_layers=3, dropout=0.2)
     """
     
     # Create the Sequential model
@@ -211,13 +190,53 @@ def create_model(sequence_length, n_features, units=50, cell=LSTM, n_layers=2, d
         # Add dropout after each layer
         model.add(Dropout(dropout))
     
-    # Add final dense layer for prediction
-    model.add(Dense(units=1))
+    # Add final dense layer for prediction - output size depends on steps_ahead
+    model.add(Dense(units=steps_ahead))
     
     # Compile the model with specified optimizer and loss
     model.compile(optimizer=optimizer, loss=loss)
     
     return model
+
+#------------------------------------------------------------------------------
+# Function to create training data for different prediction types
+#------------------------------------------------------------------------------
+def create_training_data(scaled_data, prediction_days, steps_ahead=1, multivariate=False):
+    """
+    Create training data for different prediction problems.
+    
+    Parameters:
+    scaled_data: The scaled data array
+    prediction_days (int): Number of days to look back
+    steps_ahead (int): Number of days to predict into the future (1 for single step)
+    multivariate (bool): Whether to create multivariate data
+    
+    Returns:
+    x_train, y_train: Training data arrays
+    """
+    x_train = []
+    y_train = []
+    
+    if multivariate:
+        # For multivariate prediction
+        for x in range(prediction_days, len(scaled_data) - steps_ahead + 1):
+            x_train.append(scaled_data[x-prediction_days:x])
+            if steps_ahead == 1:
+                y_train.append(scaled_data[x, 3])  # 3 is the index for Close price
+            else:
+                y_train.append(scaled_data[x:x+steps_ahead, 3])  # Predict next k days of Close prices
+    else:
+        # For univariate prediction
+        for x in range(prediction_days, len(scaled_data) - steps_ahead + 1):
+            x_train.append(scaled_data[x-prediction_days:x])
+            y_train.append(scaled_data[x:x+steps_ahead])  # Predict next k days
+    
+    x_train, y_train = np.array(x_train), np.array(y_train)
+    
+    if not multivariate:
+        x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
+    
+    return x_train, y_train
 
 #------------------------------------------------------------------------------
 # Function to display stock data using candlestick chart
@@ -402,42 +421,90 @@ PRICE_VALUE = "Close"
 close_scaler = feature_scalers[PRICE_VALUE]
 
 #------------------------------------------------------------------------------
-# Prepare Data
+# Prepare Data for Different Prediction Types
 #------------------------------------------------------------------------------
-# Prepare the scaled data for the LSTM model
-scaled_data = train_data[PRICE_VALUE].values
-
-# Number of days to look back to base the prediction
 PREDICTION_DAYS = 60
 
-# To store the training data
-x_train = []
-y_train = []
+# Univariate single step prediction
+print("Setting up univariate single step prediction...")
+scaled_data = train_data[PRICE_VALUE].values
+x_train_uni, y_train_uni = create_training_data(scaled_data, PREDICTION_DAYS, steps_ahead=1, multivariate=False)
 
-# Prepare the data
-for x in range(PREDICTION_DAYS, len(scaled_data)):
-    x_train.append(scaled_data[x-PREDICTION_DAYS:x])
-    y_train.append(scaled_data[x])
+# Multistep prediction
+print("Setting up multistep prediction...")
+STEPS_AHEAD_MS = 5  # Predict 5 days ahead
+x_train_multistep, y_train_multistep = create_training_data(scaled_data, PREDICTION_DAYS, steps_ahead=STEPS_AHEAD_MS, multivariate=False)
 
-# Convert them into an array
-x_train, y_train = np.array(x_train), np.array(y_train)
+# Multivariate prediction
+print("Setting up multivariate prediction...")
+scaled_multivariate_data = train_data.values  # All features
+x_train_multivariate, y_train_multivariate = create_training_data(scaled_multivariate_data, PREDICTION_DAYS, steps_ahead=1, multivariate=True)
 
-x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
+# Multivariate multistep prediction
+print("Setting up multivariate multistep prediction...")
+STEPS_AHEAD_MV_MS = 3  # Predict 3 days ahead
+x_train_mv_ms, y_train_mv_ms = create_training_data(scaled_multivariate_data, PREDICTION_DAYS, steps_ahead=STEPS_AHEAD_MV_MS, multivariate=True)
 
 #------------------------------------------------------------------------------
-# Build the Model using the new create_model function
+# Build and Train Models
 #------------------------------------------------------------------------------
-# Original LSTM model configuration
-model = create_model(sequence_length=PREDICTION_DAYS, 
-                    n_features=1, 
-                    units=50, 
-                    cell=LSTM, 
-                    n_layers=3, 
-                    dropout=0.2,
-                    optimizer='adam',
-                    loss='mean_squared_error')
+# Univariate single step model
+print("Training Original_LSTM...")
+model = create_model(
+    sequence_length=PREDICTION_DAYS, 
+    n_features=1, 
+    units=50, 
+    cell=LSTM, 
+    n_layers=3, 
+    dropout=0.2,
+    optimizer='adam',
+    loss='mean_squared_error',
+    steps_ahead=1
+)
 
-model.fit(x_train, y_train, epochs=25, batch_size=32)
+model.fit(x_train_uni, y_train_uni, epochs=10, batch_size=32)
+
+# Multistep model
+print("Training Multistep_Model...")
+multistep_model = create_model(
+    sequence_length=PREDICTION_DAYS, 
+    n_features=1, 
+    steps_ahead=STEPS_AHEAD_MS,
+    units=50, 
+    cell=LSTM, 
+    n_layers=2, 
+    dropout=0.2
+)
+
+multistep_model.fit(x_train_multistep, y_train_multistep, epochs=10, batch_size=32)
+
+# Multivariate model
+print("Training Multivariate_Model...")
+multivariate_model = create_model(
+    sequence_length=PREDICTION_DAYS, 
+    n_features=len(train_data.columns),  # Number of features
+    units=50, 
+    cell=LSTM, 
+    n_layers=2, 
+    dropout=0.2,
+    steps_ahead=1
+)
+
+multivariate_model.fit(x_train_multivariate, y_train_multivariate, epochs=10, batch_size=32)
+
+# Multivariate multistep model
+print("Training Multivariate_Multistep_Model...")
+mv_ms_model = create_model(
+    sequence_length=PREDICTION_DAYS, 
+    n_features=len(train_data.columns),  # Number of features
+    steps_ahead=STEPS_AHEAD_MV_MS,
+    units=50, 
+    cell=LSTM, 
+    n_layers=2, 
+    dropout=0.2
+)
+
+mv_ms_model.fit(x_train_mv_ms, y_train_mv_ms, epochs=10, batch_size=32)
 
 #------------------------------------------------------------------------------
 # Experiment with different model configurations
@@ -449,14 +516,16 @@ model_configs = [
         'cell': GRU,
         'units': [50, 50, 50],
         'n_layers': 3,
-        'dropout': 0.2
+        'dropout': 0.2,
+        'steps_ahead': 1
     },
     {
         'name': 'RNN_Model',
         'cell': SimpleRNN,
         'units': [50, 50],
         'n_layers': 2,
-        'dropout': 0.3
+        'dropout': 0.3,
+        'steps_ahead': 1
     },
     {
         'name': 'Bidirectional_LSTM',
@@ -464,7 +533,8 @@ model_configs = [
         'units': [50, 50],
         'n_layers': 2,
         'dropout': 0.2,
-        'bidirectional': True
+        'bidirectional': True,
+        'steps_ahead': 1
     }
 ]
 
@@ -483,14 +553,20 @@ for config in model_configs:
         cell=config['cell'],
         n_layers=config['n_layers'],
         dropout=config['dropout'],
-        bidirectional=config.get('bidirectional', False)
+        bidirectional=config.get('bidirectional', False),
+        steps_ahead=config['steps_ahead']
     )
     
     # Train the model
-    current_model.fit(x_train, y_train, epochs=15, batch_size=32, verbose=1)
+    current_model.fit(x_train_uni, y_train_uni, epochs=10, batch_size=32, verbose=1)
     
     # Store the model
     models[config['name']] = current_model
+
+# Add multistep, multivariate, and combined models to the models dictionary
+models['Multistep_Model'] = multistep_model
+models['Multivariate_Model'] = multivariate_model
+models['Multivariate_Multistep_Model'] = mv_ms_model
 
 #------------------------------------------------------------------------------
 # Test the model accuracy on existing data
@@ -525,9 +601,13 @@ all_predictions = {}
 
 # Get predictions from all models
 for model_name, model_obj in models.items():
-    predicted_prices = model_obj.predict(x_test)
-    predicted_prices = close_scaler.inverse_transform(predicted_prices)
-    all_predictions[model_name] = predicted_prices
+    if 'Multistep' in model_name or 'Multivariate' in model_name:
+        # Skip multistep and multivariate models for this test since they have different input/output shapes
+        continue
+    else:
+        predicted_prices = model_obj.predict(x_test)
+        predicted_prices = close_scaler.inverse_transform(predicted_prices)
+        all_predictions[model_name] = predicted_prices
 
 #------------------------------------------------------------------------------
 # Plot the test predictions for all models
@@ -536,7 +616,7 @@ plt.figure(figsize=(12, 6))
 plt.plot(actual_prices, color="black", label=f"Actual {COMPANY} Price")
 
 # Plot predictions from all models
-colors = ['green', 'blue', 'red', 'orange']
+colors = ['green', 'blue', 'red', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
 for i, (model_name, predictions) in enumerate(all_predictions.items()):
     plt.plot(predictions, color=colors[i % len(colors)], label=f"Predicted {model_name}")
 
@@ -624,3 +704,90 @@ real_data = np.reshape(real_data, (real_data.shape[0], real_data.shape[1], 1))
 prediction = model.predict(real_data)
 prediction = close_scaler.inverse_transform(prediction)
 print(f"Prediction: {prediction}")
+
+#------------------------------------------------------------------------------
+# Test multistep prediction
+#------------------------------------------------------------------------------
+print("\nTesting multistep prediction...")
+# Prepare data for multistep prediction
+test_data_multistep = yf.download(COMPANY, TEST_START, TEST_END)
+full_data_multistep = yf.download(COMPANY, TRAIN_START, TEST_END)
+full_prices_multistep = full_data_multistep[PRICE_VALUE].values
+
+model_inputs_multistep = full_prices_multistep[len(full_prices_multistep) - len(test_data_multistep) - PREDICTION_DAYS:]
+model_inputs_multistep = model_inputs_multistep.reshape(-1, 1)
+model_inputs_multistep = close_scaler.transform(model_inputs_multistep)
+
+x_test_multistep = []
+for x in range(PREDICTION_DAYS, len(model_inputs_multistep) - STEPS_AHEAD_MS + 1):
+    x_test_multistep.append(model_inputs_multistep[x - PREDICTION_DAYS:x, 0])
+
+x_test_multistep = np.array(x_test_multistep)
+x_test_multistep = np.reshape(x_test_multistep, (x_test_multistep.shape[0], x_test_multistep.shape[1], 1))
+
+# Get multistep predictions
+multistep_predictions = multistep_model.predict(x_test_multistep)
+
+# Handle inverse transform for multistep predictions
+# The prediction output should already be in shape (batch_size, steps_ahead)
+if multistep_predictions.ndim == 2 and multistep_predictions.shape[1] == STEPS_AHEAD_MS:
+    # Already in the right shape (batch_size, steps_ahead), so process each step
+    reshaped_predictions = multistep_predictions.reshape(-1, 1)
+    inverse_predictions = close_scaler.inverse_transform(reshaped_predictions)
+    multistep_predictions = inverse_predictions.reshape(-1, STEPS_AHEAD_MS)
+else:
+    # If shape is different, handle accordingly
+    multistep_predictions = close_scaler.inverse_transform(multistep_predictions)
+
+#------------------------------------------------------------------------------
+# Test multivariate prediction
+#------------------------------------------------------------------------------
+print("\nTesting multivariate prediction...")
+# Prepare test data for multivariate prediction
+full_data_multivariate = yf.download(COMPANY, TRAIN_START, TEST_END)
+full_data_multivariate = full_data_multivariate[['Open', 'High', 'Low', 'Close', 'Volume']]
+
+# Scale the data using the same scalers
+scaled_test_multivariate = full_data_multivariate.copy()
+for feature in ['Open', 'High', 'Low', 'Close', 'Volume']:
+    if feature in feature_scalers:
+        scaler = feature_scalers[feature]
+        scaled_test_multivariate[feature] = scaler.transform(scaled_test_multivariate[feature].values.reshape(-1, 1)).flatten()
+
+# Get the last PREDICTION_DAYS of multivariate data
+last_sequence = scaled_test_multivariate.tail(PREDICTION_DAYS).values
+last_sequence = last_sequence.reshape(1, PREDICTION_DAYS, -1)
+
+# Predict using the multivariate model
+multivariate_prediction = multivariate_model.predict(last_sequence)
+# Inverse transform using close_scaler
+multivariate_prediction = close_scaler.inverse_transform(multivariate_prediction.reshape(-1, 1)).flatten()
+
+print(f"Multivariate prediction: {multivariate_prediction[0]}")
+
+#------------------------------------------------------------------------------
+# Test multivariate multistep prediction
+#------------------------------------------------------------------------------
+print("\nTesting multivariate multistep prediction...")
+# Prepare test data for multivariate multistep prediction
+last_sequence_mv_ms = scaled_test_multivariate.tail(PREDICTION_DAYS).values
+last_sequence_mv_ms = last_sequence_mv_ms.reshape(1, PREDICTION_DAYS, -1)
+
+# Predict using the multivariate multistep model
+mv_ms_prediction = mv_ms_model.predict(last_sequence_mv_ms)
+
+# Handle inverse transform for multivariate multistep predictions
+if mv_ms_prediction.ndim == 2 and mv_ms_prediction.shape[1] == STEPS_AHEAD_MV_MS:
+    # Already in the right shape (batch_size, steps_ahead)
+    reshaped_predictions = mv_ms_prediction.reshape(-1, 1)
+    inverse_predictions = close_scaler.inverse_transform(reshaped_predictions)
+    mv_ms_prediction = inverse_predictions.reshape(-1, STEPS_AHEAD_MV_MS)
+else:
+    # Reshape and inverse transform
+    mv_ms_prediction = mv_ms_prediction.reshape(-1, STEPS_AHEAD_MV_MS)
+    reshaped_predictions = mv_ms_prediction.reshape(-1, 1)
+    inverse_predictions = close_scaler.inverse_transform(reshaped_predictions)
+    mv_ms_prediction = inverse_predictions.reshape(-1, STEPS_AHEAD_MV_MS)
+
+print(f"Multivariate multistep prediction for {STEPS_AHEAD_MV_MS} days:")
+print(mv_ms_prediction[0])
