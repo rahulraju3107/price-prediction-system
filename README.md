@@ -8,6 +8,7 @@ Key features include:
 - A configurable model builder (create_model()) that supports multiple architectures, variable layers/units, dropout, bidirectionality, and custom optimizers/ loss functions.
 - Controlled experiments comparing LSTM, GRU, SimpleRNN, and Bidirectional LSTM models.
 - Evaluation of training performance, prediction accuracy, and trade-offs between speed and complexity.
+- Advanced prediction problems including multistep, multivariate, and combined multivariate multistep prediction.
 
 ## Links
 
@@ -15,6 +16,7 @@ Key features include:
 - [C2_DataProcessing1](./C2_DataProcessing1)
 - [C3_DataProcessing2](./C3_DataProcessing2)
 - [C4_MachineLearning1](./C4_MachineLearning1)
+- [C5_MachineLearning2](./C5_MachineLearning2)
 
 ## Setup and Running
 
