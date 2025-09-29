@@ -167,19 +167,6 @@ def prepare_training_data(data, target_column, sequence_length):
 # Evaluate model performance
 #------------------------------------------------------------------------------
 def evaluate_model(model, x_test, y_test, scaler, model_name=""):
-    """
-    Evaluate model performance and return metrics.
-    
-    Parameters:
-    model: Trained Keras model
-    x_test: Test features
-    y_test: True test values
-    scaler: Scaler for inverse transformation
-    model_name (str): Name of the model for display
-    
-    Returns:
-    dict: Dictionary containing evaluation metrics
-    """
     predictions = model.predict(x_test)
     
     # Inverse transform predictions and actual values
@@ -300,6 +287,154 @@ def prepare_test_data(company, train_start, test_start, test_end, prediction_day
     return x_test, actual_prices, test_data
 
 #------------------------------------------------------------------------------
+# Display stock data using candlestick chart
+#------------------------------------------------------------------------------
+def plot_candlestick_chart(data, company, n_days=1, chart_style='charles', 
+                         title_suffix="", figsize=(12, 8)):
+    # Create candlestick chart for stock data
+    # If n_days > 1, resample data to create candles for n-day periods
+    if n_days > 1:
+        data = data.copy()
+        numeric_index = np.arange(len(data))
+        data['group'] = numeric_index // n_days  # Integer division to create groups
+        
+        agg_dict = {
+            'Open': 'first',
+            'High': 'max',
+            'Low': 'min',
+            'Close': 'last'
+        }
+        
+        # Add Volume to aggregation if it exists in the data
+        if 'Volume' in data.columns:
+            agg_dict['Volume'] = 'sum'
+            
+        # Group by the 'group' column and aggregate
+        resampled_data = data.groupby('group').agg(agg_dict)
+        
+        # Create new datetime index - use the last date in each group as the candle date
+        new_index = data.groupby('group').apply(lambda x: x.index[-1])
+        resampled_data.index = new_index
+        
+        # Use the resampled data for plotting
+        plot_data = resampled_data
+        period_text = f"({n_days}-Day Periods)"
+    else:
+        # Use original data for daily candles
+        plot_data = data
+        period_text = "(Daily)"
+    
+    # Create the candlestick chart using mplfinance
+    mpf.plot(plot_data,                    # The DataFrame with OHLC data
+             type='candle',                # Chart type: 'candle' for candlestick
+             style=chart_style,            # Visual style of the chart
+             title=f'{company} Stock Price {period_text} {title_suffix}',  # Chart title
+             ylabel='Price ($)',           # Y-axis label
+             ylabel_lower='Volume',        # Y-axis label for volume subplot (if shown)
+             volume='Volume' in plot_data.columns,  # Show volume subplot if Volume column exists
+             figsize=figsize,                # Size of the figure
+             show_nontrading=False)        # Don't show gaps for non-trading days
+
+#------------------------------------------------------------------------------
+# Display stock data using boxplot chart for moving windows
+#------------------------------------------------------------------------------
+def plot_boxplot_chart(data, company, window_size=5, column='Close', 
+                      chart_title_suffix="", figsize=(12, 8)):
+    # Display stock market data using boxplot chart for moving windows
+    # Make a copy to avoid modifying original data
+    data_copy = data.copy()
+    
+    # Create a numeric index for grouping
+    numeric_index = np.arange(len(data_copy))
+    
+    # Create a column to identify which window each row belongs to
+    data_copy['window_group'] = numeric_index // window_size
+    
+    # Create a list to store data for each window
+    window_data = []
+    window_labels = []
+    
+    # Group the data by window_group and create boxplot data for each window
+    grouped = data_copy.groupby('window_group')
+    
+    for name, group in grouped:
+        # Extract the values for the specified column
+        values = group[column].values
+        window_data.append(values)
+        
+        # Create a label for this window (use the last date in the window)
+        last_date = group.index[-1].strftime('%Y-%m-%d')
+        window_labels.append(last_date)
+    
+    # Create the boxplot
+    plt.figure(figsize=figsize)
+    
+    # Create boxplot: each box represents the distribution of prices in one window
+    box_plot = plt.boxplot(window_data, 
+                          labels=window_labels,  # X-axis labels
+                          patch_artist=True,     # Fill boxes with color
+                          showfliers=True)       # Show outliers
+    
+    # Customize the appearance
+    plt.title(f'{company} {column} Price - {window_size}-Day Moving Window {chart_title_suffix}')
+    plt.xlabel('Window End Date')
+    plt.ylabel(f'{column} Price ($)')
+    plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
+    plt.grid(True, alpha=0.3)  # Add light grid
+    
+    # Color the boxes (optional)
+    colors = ['lightblue', 'lightgreen', 'lightcoral', 'lightyellow', 'lightpink']
+    for i, box in enumerate(box_plot['boxes']):
+        box.set_facecolor(colors[i % len(colors)])
+    
+    # Display the chart
+    plt.tight_layout()
+    plt.show()
+
+#------------------------------------------------------------------------------
+# Clean data for charting
+#------------------------------------------------------------------------------
+def clean_data_for_charting(data):
+    # Clean and prepare data for charting functions
+    # Make a copy to avoid modifying original data
+    cleaned_data = data.copy()
+    
+    # Handle MultiIndex columns
+    if isinstance(cleaned_data.columns, pd.MultiIndex):
+        # Flatten the MultiIndex columns
+        cleaned_data.columns = ['_'.join(col).strip() for col in cleaned_data.columns.values]
+        # If there's only one ticker, remove the ticker suffix
+        cleaned_data.columns = [col.split('_')[0] if '_' in col else col for col in cleaned_data.columns]
+    
+    # Forward fill to replace NaN values with previous values
+    cleaned_data = cleaned_data.ffill()
+    
+    # Backward fill to handle any remaining NaN values at the beginning
+    cleaned_data = cleaned_data.bfill()
+    
+    # Ensure all required columns are numeric
+    required_columns = ['Open', 'High', 'Low', 'Close']
+    for col in required_columns:
+        if col in cleaned_data.columns:
+            # Make sure we're working with a Series
+            if isinstance(cleaned_data[col], pd.Series):
+                cleaned_data[col] = pd.to_numeric(cleaned_data[col], errors='coerce')
+            else:
+                # If it's not a Series, convert to Series first
+                cleaned_data[col] = pd.to_numeric(pd.Series(cleaned_data[col]), errors='coerce')
+            
+    # If Volume column exists, ensure it's numeric too
+    if 'Volume' in cleaned_data.columns:
+        if isinstance(cleaned_data['Volume'], pd.Series):
+            cleaned_data['Volume'] = pd.to_numeric(cleaned_data['Volume'], errors='coerce')
+        else:
+            cleaned_data['Volume'] = pd.to_numeric(pd.Series(cleaned_data['Volume']), errors='coerce')
+        # Fill any remaining NaN in Volume with 0 (since volume can't be negative)
+        cleaned_data['Volume'] = cleaned_data['Volume'].fillna(0)
+    
+    return cleaned_data
+
+#------------------------------------------------------------------------------
 # Main execution
 #------------------------------------------------------------------------------
 def main():
@@ -336,52 +471,11 @@ def main():
     
     # Define model configurations for experimentation
     model_configs = [
-        {
-            'name': 'LSTM_Layer',
-            'cell': LSTM,
-            'units': [50, 50, 50],
-            'n_layers': 3,
-            'dropout': 0.2,
-            'epochs': 25,
-            'batch_size': 32
-        },
-        {
-            'name': 'GRU_Layer',
-            'cell': GRU,
-            'units': [64, 32],
-            'n_layers': 2,
-            'dropout': 0.3,
-            'epochs': 20,
-            'batch_size': 32
-        },
-        {
-            'name': 'SimpleRNN_Layer',
-            'cell': SimpleRNN,
-            'units': [50, 50],
-            'n_layers': 2,
-            'dropout': 0.2,
-            'epochs': 30,
-            'batch_size': 64
-        },
-        {
-            'name': 'Bidirectional_LSTM',
-            'cell': LSTM,
-            'units': [50, 50],
-            'n_layers': 2,
-            'dropout': 0.2,
-            'bidirectional': True,
-            'epochs': 25,
-            'batch_size': 32
-        },
-        {
-            'name': 'Deep_LSTM',
-            'cell': LSTM,
-            'units': [100, 80, 60, 40],
-            'n_layers': 4,
-            'dropout': 0.3,
-            'epochs': 30,
-            'batch_size': 16
-        }
+    {'name': 'LSTM', 'cell': LSTM, 'units': [50, 50, 50], 'n_layers': 3, 'dropout': 0.2, 'epochs': 25, 'batch_size': 32},
+    {'name': 'GRU', 'cell': GRU, 'units': [64, 32], 'n_layers': 2, 'dropout': 0.3, 'epochs': 20, 'batch_size': 32},
+    {'name': 'SimpleRNN', 'cell': SimpleRNN, 'units': [50, 50], 'n_layers': 2, 'dropout': 0.2, 'epochs': 30, 'batch_size': 64},
+    {'name': 'Bidirectional_LSTM', 'cell': LSTM, 'units': [50, 50], 'n_layers': 2, 'dropout': 0.2, 'bidirectional': True, 'epochs': 25, 'batch_size': 32},
+    {'name': 'Deep_LSTM', 'cell': LSTM, 'units': [100, 80, 60, 40], 'n_layers': 4, 'dropout': 0.3, 'epochs': 30, 'batch_size': 16}
     ]
     
     # Prepare test data once for all models
@@ -487,6 +581,37 @@ def main():
     print(f"{'-'*80}")
     for model_name, metrics in metrics_results.items():
         print(f"{model_name:<20} {metrics['rmse']:<10.4f} {metrics['mae']:<10.4f} {metrics['mape']:<10.2f}%")
+    
+    #------------------------------------------------------------------------------
+    # Candlestick and Boxplot Charts
+    #------------------------------------------------------------------------------
+    print(f"\n{'='*60}")
+    print("VISUALIZATION CHARTS")
+    print(f"{'='*60}")
+    
+    # Get data for candlestick and boxplot charts
+    candlestick_data = yf.download(COMPANY, TEST_START, TEST_END)
+    
+    # Clean the data for charting
+    cleaned_data = clean_data_for_charting(candlestick_data)
+    
+    # Plot Candlestick Charts
+    print("\nDisplaying Daily Candlestick Chart...")
+    plot_candlestick_chart(cleaned_data, COMPANY, n_days=1, 
+                          title_suffix="(Test Period)")
+    
+    print("\nDisplaying 3-Day Candlestick Chart...")
+    plot_candlestick_chart(cleaned_data, COMPANY, n_days=3, 
+                          title_suffix="(Test Period)")
+    
+    # Plot Boxplot Charts
+    print("\nDisplaying 5-Day Moving Window Boxplot Chart...")
+    plot_boxplot_chart(cleaned_data, COMPANY, window_size=5, column='Close',
+                      chart_title_suffix="(Test Period)")
+    
+    print("\nDisplaying 10-Day Moving Window Boxplot Chart...")
+    plot_boxplot_chart(cleaned_data, COMPANY, window_size=10, column='Close',
+                      chart_title_suffix="(Test Period)")
 
 if __name__ == "__main__":
     main()
