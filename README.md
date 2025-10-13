@@ -17,6 +17,7 @@ Key features include:
 - [C3_DataProcessing2](./C3_DataProcessing2)
 - [C4_MachineLearning1](./C4_MachineLearning1)
 - [C5_MachineLearning2](./C5_MachineLearning2)
+- [C6_MachineLearning3](./C6_MachineLearning3)
 
 ## Setup and Running
 
