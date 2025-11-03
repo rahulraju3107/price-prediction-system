@@ -18,6 +18,7 @@ Key features include:
 - [C4_MachineLearning1](./C4_MachineLearning1)
 - [C5_MachineLearning2](./C5_MachineLearning2)
 - [C6_MachineLearning3](./C6_MachineLearning3)
+- [C7_Extension](./C7_Extension)
 
 ## Setup and Running
 
